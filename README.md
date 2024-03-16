@@ -1,4 +1,4 @@
-##What is this?
+## What is this?
 Galgamer is a vision novel player for web. Uses Vue3 framework and material design.
 ### Starting the Development Server
 
