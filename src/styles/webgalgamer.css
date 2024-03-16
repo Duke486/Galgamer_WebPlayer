@@ -1,0 +1,60 @@
+#globe {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    margin: auto;
+    width: 75%;
+}
+
+.button-left {
+    margin-left: 2em;
+}
+
+.button-right {
+    margin-right: 2em;
+}
+
+.MainWindow {
+    width: 100%;
+}
+
+.image-container {
+    position: relative;
+}
+
+.text-name {
+    position: absolute;
+    top: 63%; /* 距离图片底部的距离 */
+    left: 9%; /* 距离图片左边的距离 */
+    color: white;
+    font-weight: bold;
+    font-size: 1.5em;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* 阴影效果 */
+    padding: 10px; /* 文字与边框的距离 */
+}
+.text-say {
+    position: absolute;
+    top: 71%; /* 距离图片底部的距离 */
+    left: 10%; /* 距离图片左边的距离 */
+    right: 10%;
+    color: white;
+    font-weight: bold;
+    font-size: 1.5em;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* 阴影效果 */
+    padding: 10px; /* 文字与边框的距离 */
+}
+#choiceA{
+    position: absolute;
+    top: 40%; /* 距离图片底部的距离 */
+    left: 20%; /* 距离图片左边的距离 */
+    right: 30%;
+
+}
+#choiceB{
+    position: absolute;
+    top: 40%; /* 距离图片底部的距离 */
+    left: 60%; /* 距离图片左边的距离 */
+    right: 20%;
+
+}
