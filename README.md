@@ -1,7 +1,7 @@
 ## What is this?
 Galgamer is a vision novel player for web. Uses Vue3 framework and material design.
 
-Galgamer是一个在web上的视觉小说播放器，采用了Vue3框架和质感风格设计。
+Galgamer是一个在web上的视觉小说播放器，采用了Vue3框架和质感风格设计。demo[http://duke486.github.io]
 ### Starting the Development Server
 
 To start the development server with hot-reload, run the following command. The server will be accessible at [http://localhost:3000]
