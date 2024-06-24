@@ -1,29 +1,36 @@
-## What is this?
-Galgamer is a vision novel player for web. Uses Vue3 framework and material design.
 
-Galgamer是一个在web上的视觉小说播放器，采用了Vue3框架和质感风格设计。demo[http://duke486.github.io]
-### Starting the Development Server
+## 🎮 Galgamer
 
-To start the development server with hot-reload, run the following command. The server will be accessible at [http://localhost:3000]
+A visual novel player for the web, built with Vue3 and material design.
 
-要通过热重载启动开发服务器，请运行以下命令。可以通过 [http://localhost:3000] 访问服务器
+[**🖥️ Live Demo**](http://duke486.github.io)
 
-```bash
-npm run dev
-```
+![Preview Image](https://raw.githubusercontent.com/duke486/resource/main/galgamer/home.png)
 
-(Repeat for yarn, pnpm, and bun with respective commands.)
+## 🚀 How to Use
 
-> Add NODE_OPTIONS='--no-warnings' to suppress the JSON import warnings that happen as part of the Vuetify import mapping. 
+1. Clone the repository from [GitHub](https://github.com/duke486/galgamer).
+2. Install dependencies using your preferred package manager:
+   - `npm install`
+   - `yarn install`
+   - `pnpm install`
+   - `bun install`
+3. To start the development server with hot-reload, run the following command:
 
-### Building for Production
+   ```bash
+   npm run dev
+   ```
 
-To build your project for production, use:
+   The server will be accessible at [http://localhost:3000].
 
-```bash
-npm build
-```
+   To suppress the JSON import warnings that happen as part of the Vuetify import mapping, add `NODE_OPTIONS='--no-warnings'`.
 
-(Repeat for npm, pnpm, and bun with respective commands.)
+4. To build your project for production, use:
 
-Once the build process is completed, your application will be ready for deployment in a production environment.
+   ```bash
+   npm run build
+   ```
+
+   Once the build process is completed, your application will be ready for deployment in a production environment.
+   
+   Repeat for yarn, pnpm, and bun with respective commands.
