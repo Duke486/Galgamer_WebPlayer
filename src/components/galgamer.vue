@@ -1,66 +1,139 @@
 <template>
-    <span>&nbsp;</span>
-    <div id="globe">
+    <v-container id="globe" class="pa-4 main-container">
+        <v-fade-transition>
+            <v-card class="mx-auto" max-width="1200" elevation="3">
+                <v-card-title class="text-h3 font-weight-bold text-center py-4">
+                    GalGamer
+                </v-card-title>
 
-        <h1>GalGamer</h1>
+                <v-card-text class="image-container position-relative">
+                    <v-img
+                        v-if="!start || (!vid && start)"
+                        :src="getImageUrl(imgname)"
+                        @click="go"
+                        class="MainWindow rounded-lg"
+                        cover
+                    ></v-img>
+                    <video
+                        v-if="vid"
+                        class="MainWindow rounded-lg"
+                        :src="getVidUrl(vidname)"
+                        autoplay
+                    ></video>
+                    
+                    <v-slide-y-transition>
+                        <v-sheet
+                            v-if="!vid && start"
+                            class="text-overlay pa-4 rounded-lg"
+                            height="140"
+                        >
+                            <div class="text-h5 font-weight-bold text-white mb-2 px-4">{{character || '　'}}</div>
+                            <div class="text-body-1 text-white px-6 pb-2">{{say}}</div>
+                        </v-sheet>
+                    </v-slide-y-transition>
 
-        <div class="image-container">
-            <img class="MainWindow" v-if="!start" :src="getImageUrl(imgname)" @click="go">
-            <img class="MainWindow" v-if="!vid&&start" :src="getImageUrl(imgname)" @click="go">
-            <video class="MainWindow" v-if="vid" :src="getVidUrl(vidname)" autoplay></video>
-            <div v-if="!vid&&start" class="text-name">{{character}}</div>
-            <div v-if="!vid&&start" class="text-say">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{{say}}</div>
-            <v-btn v-if="choosing" id="choiceA" @click="chooseA" rounded="xl" prepend-icon="mdi-grass" color="purple" width="20%" stacked>
-                {{ buttonA }}
-            </v-btn>
-            <v-btn v-if="choosing" id="choiceB" @click="chooseB" rounded="xl" prepend-icon="mdi-flower-outline" color="orange" width="20%" stacked>
-                {{ buttonB }}
-            </v-btn>
-        </div>
-        <br>
-        <div style="display: flex; justify-content: space-between; width: 100%;">
-            <span v-if="!start">&nbsp;</span>
-            <v-btn v-if="start" rounded="xl" @click="title" append-icon="" class="button-left">回到标题</v-btn>
-            <v-btn v-if="!choosing" rounded="xl" @click="go" color="success" append-icon="mdi-arrow-right-bold-circle"
-                class="button-right">{{ buttonGo }}</v-btn>
-        </div>
+                    <v-row v-if="choosing" justify="center" align="center" class="choice-buttons">
+                        <v-col cols="12" class="text-center mb-4">
+                            <div class="choice-title text-h5 text-white mb-8">{{say}}</div>
+                        </v-col>
+                        <v-col cols="5">
+                            <v-btn
+                                id="choiceA"
+                                @click="chooseA"
+                                rounded="xl"
+                                prepend-icon="mdi-grass"
+                                color="purple"
+                                size="large"
+                                block
+                                elevation="2"
+                                class="text-subtitle-1"
+                            >
+                                {{ buttonA }}
+                            </v-btn>
+                        </v-col>
+                        <v-col cols="5">
+                            <v-btn
+                                id="choiceB"
+                                @click="chooseB"
+                                rounded="xl"
+                                prepend-icon="mdi-flower-outline"
+                                color="orange"
+                                size="large"
+                                block
+                                elevation="2"
+                                class="text-subtitle-1"
+                            >
+                                {{ buttonB }}
+                            </v-btn>
+                        </v-col>
+                    </v-row>
+                </v-card-text>
+
+                <v-card-actions class="pa-4">
+                    <v-spacer v-if="!start"></v-spacer>
+                    <v-btn
+                        v-if="start"
+                        rounded="xl"
+                        @click="title"
+                        color="error"
+                        variant="outlined"
+                        prepend-icon="mdi-keyboard-return"
+                    >
+                        回到标题
+                    </v-btn>
+                    <v-spacer></v-spacer>
+                    <v-btn
+                        v-if="!choosing"
+                        rounded="xl"
+                        @click="go"
+                        class="next-btn"
+                        append-icon="mdi-arrow-right-bold-circle"
+                        size="large"
+                    >
+                        {{ buttonGo }}
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-fade-transition>
+
         <audio v-if="voice" style="width: 1px;height: 1px;" controls="controls" autoplay="autoplay">
             <source :src="getVoiceUrl(voicename)" type="audio/mpeg" />
         </audio>
 
-    </div>
-    <v-dialog
-      v-model="ConfirmTitle"
-      width="auto"
-    >
-      <v-card
-        max-width="400"
-        prepend-icon="mdi-alert-decagram-outline"
-        text="确定要回到标题画面吗？所有未保存的进度将丢失。"
-        title="回到标题"
-      >
-        <template v-slot:actions>
-          <v-spacer></v-spacer>
-          <v-btn
-            
-            text="取消"
-            @click="ConfirmTitle = false"
-          ></v-btn>
-          <v-btn
-            
-            text="确定"
-            color="error"
-            @click="restart"
-          ></v-btn>
-        </template>
-      </v-card>
-    </v-dialog>
-
+        <v-dialog v-model="ConfirmTitle" width="auto">
+            <v-card
+                max-width="400"
+                prepend-icon="mdi-alert-decagram-outline"
+                title="回到标题"
+                class="pa-4"
+            >
+                <v-card-text>
+                    确定要回到标题画面吗？所有未保存的进度将丢失。
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn
+                        variant="text"
+                        @click="ConfirmTitle = false"
+                    >
+                        取消
+                    </v-btn>
+                    <v-btn
+                        color="error"
+                        @click="restart"
+                    >
+                        确定
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+    </v-container>
 </template>
 
 <script>
-export default {
+import gameData from '../assets/game1.json'
 
+export default {
     data() {
         return {
             start: false,
@@ -81,320 +154,8 @@ export default {
             character: '',
             say: '',
 
-            plot: [
-                {
-                    character: 'vid',
-                    say: '',
-                    vision: 'M1.mp4',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '今天也是自己一个人去上学',
-                    vision: '001.png',
-                    voice: '',
-                },
-                {character: '',
-                    say: '自从父母到外地办厂子之后，我就一个人留在武汉的家里',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '大爷',
-                    say: '哦，这不是邱诚吗',
-                    vision: '',
-                    voice: '0001.mp3',
-                },
-                {
-                    character: '邱诚',
-                    say: '早上好啊，爷爷',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '大爷',
-                    say: '真巧啊。啊，对了，刚才还碰到那丫头呢，我还提到你呢',
-                    vision: '',
-                    voice: '0002.mp3',
-                },
-
-                {
-                    character: '邱诚',
-                    say: '啊······爷爷，我还着急上学，先走了啊',
-                    vision: '',
-                    voice: '',
-                },
-                
-                {
-                    character: '大爷',
-                    say: '哦，不急不急，路上注意车啊',
-                    vision: '',
-                    voice: '0003.mp3',
-                },
-                
-                {
-                    character: '',
-                    say: '我继续向小区门口走去',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '那个身影是······',
-                    vision: '002.png',
-                    voice: '',
-                },
-                {
-                    character: '邱诚',
-                    say: '墨！······',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '墨小菊',
-                    say: '啊',
-                    vision: '003.png',
-                    voice: '0004.mp3',
-                },
-                {
-                    character: '',
-                    say: '一不留神，就喊出来了',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '发生了那种事，她现在应该不想看到我吧',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '墨小菊',
-                    say: '......',
-                    vision: '004.png',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '她走掉了，果然啊',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '任由双脚走着，等我回过神来的时候，已经到学校门口了',
-                    vision: '005.png',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '今天公布分班榜，我从普通班转到了艺术班，尽管家里人都反对就是了',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '不知道会遇到怎样的同学啊······',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '来到教室，一位紫发的女孩子已经坐在邻座了',
-                    vision: '006.png',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '坐在最后排吗？应该跟我一样是新生吧',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '分班表上的新生只有两个，一个是我，另一个人好像叫 文芷',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '邱诚',
-                    say: '你好，请问你是，文芷吗',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '文芷',
-                    say: '啊',
-                    vision: '007.png',
-                    voice: '0005.mp3',
-                },
-                {
-                    character: '邱诚',
-                    say: '抱歉抱歉，我可能认错人了',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '文芷',
-                    say: '为什么······',
-                    vision: '008.png',
-                    voice: '0006.mp3',
-                },
-                {
-                    character: '',
-                    say: '好奇怪的女生,以后能好好相处吗...',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '开学第一天在忙碌中度过，不知不觉都傍晚了',
-                    vision: '009.png',
-                    voice: '',
-                },
-                {
-                    character: '丁老师',
-                    say: '好了，以上就是秋季运动会的大致安排',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '丁老师',
-                    say: '我们作为艺术班，一定要做好宣传工作',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '丁老师',
-                    say: '这次运动会会有省里的领导来视察，必须认真对待',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '丁老师',
-                    say: '好了，散会。同学们回家吧',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '文芷',
-                    say: '盯————',
-                    vision: '010.png',
-                    voice: '',
-                },
-                {
-                    character: '邱诚',
-                    say: '怎么了吗',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '文芷',
-                    say: '我只是在想，你的画，是怎样的呢',
-                    vision: '',
-                    voice: '0007.mp3',
-                },
-                {
-                    character: '邱诚',
-                    say: '我的画？为什么会关心这个呢',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '文芷',
-                    say: '啊。只是，想看看你的画而已，稍微，有点兴趣······',
-                    vision: '',
-                    voice: '0008.mp3',
-                },
-                {
-                    character: '',
-                    say: '刚见面就要看画的人，应该很少见吧',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '不过拒绝人家感觉有点过意不去，她也没有什么恶意',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '邱诚',
-                    say: '好吧，明天我带来几张给你看',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '走进小区，打开家门，回到我的房间里',
-                    vision: '011.png',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '书桌上是为新学期准备的素描本',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '邱诚',
-                    say: '今天画点什么记录一下吧',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: 'choose',
-                    say: '要画什么呢',
-                    vision: '012.png',
-                    voice: '',
-                },
-                {
-                    character: '邱诚',
-                    say: '那个新来的文芷，有点让人在意',
-                    vision: '014.png',
-                    voice: '',
-                },
-                {
-                    character: 'jump',
-                    say: '48',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '邱诚',
-                    say: '小菊今早的样子，有点让人在意',
-                    vision: '013.png',
-                    voice: '',
-                },
-                {
-                    character: 'jump',
-                    say: '48',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: '',
-                    say: '有些困了，今天就先睡吧',
-                    vision: '',
-                    voice: '',
-                },
-                {
-                    character: 'vid',
-                    say: '',
-                    vision: '0001.mp4',
-                    voice: '',
-                },
-            ],
-            choose:[//使用问题处的台词作为索引
-                {
-                    question: '要画什么呢',
-                    A: '文芷的身影',
-                    indexA:44,
-                    B:'墨小菊的身影',
-                    indexB:46,
-                }
-            ]
-
+            plot: gameData.plot,
+            choose: gameData.choices
         };
     },
     methods: {
@@ -482,6 +243,71 @@ export default {
 </script>
 
 <style scoped>
-@import '../styles/webgalgamer.css';
+.main-container {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+    min-height: 100vh;
+}
 
+.image-container {
+    position: relative;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.MainWindow {
+    width: 100%;
+    height: auto;
+    max-height: 70vh;
+    object-fit: contain;
+}
+
+.text-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: 16px;
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0) 0%,
+        rgba(0, 0, 0, 0.1) 10%,
+        rgba(0, 0, 0, 0.3) 25%,
+        rgba(0, 0, 0, 0.5) 40%,
+        rgba(0, 0, 0, 0.7) 60%,
+        rgba(0, 0, 0, 0.8) 100%
+    );
+    backdrop-filter: blur(2px);
+    overflow-y: auto;
+}
+
+.next-btn {
+    background-color: rgba(76, 175, 80, 0.1) !important;
+    color: #4CAF50 !important;
+}
+
+.next-btn:hover {
+    background-color: rgba(76, 175, 80, 0.2) !important;
+}
+
+.choice-buttons {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    max-width: 800px;
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0) 0%,
+        rgba(0, 0, 0, 0.4) 30%,
+        rgba(0, 0, 0, 0.4) 70%,
+        rgba(0, 0, 0, 0) 100%
+    );
+    padding: 2rem;
+}
+
+.choice-title {
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
 </style>
