@@ -35,7 +35,22 @@
           <div v-if="start && !vid" class="dialogue-layer">
             <div class="dialogue-box">
               <div class="dialogue-box__nameplate">{{ displayCharacter }}</div>
-              <div class="dialogue-box__content">{{ say }}</div>
+              <div class="dialogue-box__content">
+                <span
+                  v-for="(char, index) in renderedChars"
+                  :key="`${textRenderKey}-${index}`"
+                  class="dialogue-char"
+                  :class="{ 'dialogue-char--visible': index < revealCount }"
+                >{{ char === ' ' ? '\u00A0' : char }}</span>
+              </div>
+              <button
+                v-if="currentVoiceName"
+                class="voice-replay-btn"
+                title="重播当前语音"
+                @click.stop="replayCurrentVoice"
+              >
+                <span class="mdi mdi-volume-high"></span>
+              </button>
             </div>
           </div>
         </transition>
@@ -57,10 +72,10 @@
           <button class="icon-btn" @click="toggleBacklog" title="回看">
             <span class="mdi mdi-text-box-search-outline"></span>
           </button>
-          <button class="icon-btn" @click="saveProgress" title="存档">
+          <button class="icon-btn" @click="openSaveSlots" title="存档">
             <span class="mdi mdi-content-save-outline"></span>
           </button>
-          <button class="icon-btn" @click="loadProgress" title="读档">
+          <button class="icon-btn" @click="openLoadSlots" title="读档">
             <span class="mdi mdi-folder-open-outline"></span>
           </button>
           <button class="icon-btn" @click="toggleMenu" title="菜单">
@@ -72,11 +87,11 @@
           <div v-if="menuOpen" class="overlay-menu" @click.self="menuOpen = false">
             <div class="overlay-menu__panel">
               <div class="overlay-menu__title">系统菜单</div>
-              <button class="overlay-menu__item" @click="saveProgress">
+              <button class="overlay-menu__item" @click="openSaveSlots">
                 <span class="mdi mdi-content-save-outline"></span>
                 <span>保存进度</span>
               </button>
-              <button class="overlay-menu__item" @click="loadProgress">
+              <button class="overlay-menu__item" @click="openLoadSlots">
                 <span class="mdi mdi-folder-open-outline"></span>
                 <span>读取进度</span>
               </button>
@@ -106,10 +121,60 @@
               </div>
               <div class="backlog-list">
                 <div v-if="!historyEntries.length" class="backlog-empty">当前还没有可回看的内容。</div>
-                <div v-for="entry in historyEntries" :key="entry.id" class="backlog-item">
-                  <div class="backlog-item__speaker">{{ entry.speaker || '旁白' }}</div>
+                <div v-for="entry in historyEntries" :key="entry.id + '-' + entry.commandIndex" class="backlog-item">
+                  <div class="backlog-item__top">
+                    <div class="backlog-item__speaker">{{ entry.speaker || '旁白' }}</div>
+                    <div class="backlog-item__actions">
+                      <button
+                        v-if="entry.voice"
+                        class="backlog-action"
+                        @click="replayHistoryVoice(entry.voice)"
+                        title="回放语音"
+                      >
+                        <span class="mdi mdi-volume-high"></span>
+                      </button>
+                      <button
+                        class="backlog-action"
+                        @click="jumpToHistoryEntry(entry)"
+                        title="跳到此处"
+                      >
+                        <span class="mdi mdi-map-marker-path"></span>
+                      </button>
+                    </div>
+                  </div>
                   <div class="backlog-item__text">{{ entry.text }}</div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </transition>
+
+        <transition name="fade-soft">
+          <div v-if="slotPanelOpen" class="overlay-menu" @click.self="slotPanelOpen = false">
+            <div class="overlay-menu__panel overlay-menu__panel--wide">
+              <div class="overlay-menu__title">{{ slotPanelMode === 'save' ? '选择存档槽位' : '选择读档槽位' }}</div>
+              <div class="slot-list">
+                <button
+                  v-for="slot in saveSlots"
+                  :key="slot.index"
+                  class="slot-item"
+                  @click="slotPanelMode === 'save' ? saveToSlot(slot.index) : loadFromSlot(slot.index)"
+                >
+                  <div class="slot-item__header">
+                    <span>槽位 {{ slot.index + 1 }}</span>
+                    <span v-if="slot.data">{{ slot.data.savedAt }}</span>
+                    <span v-else>空</span>
+                  </div>
+                  <div class="slot-item__body">
+                    <template v-if="slot.data">
+                      <div>{{ slot.data.character || '旁白' }}</div>
+                      <div class="slot-item__text">{{ slot.data.text || '（无文本）' }}</div>
+                    </template>
+                    <template v-else>
+                      <div class="slot-item__text">这个槽位还没有保存内容</div>
+                    </template>
+                  </div>
+                </button>
               </div>
             </div>
           </div>
@@ -117,9 +182,10 @@
       </div>
     </div>
 
-    <audio v-if="voice" autoplay>
+    <audio ref="mainVoice" v-if="voice" :key="mainVoiceKey" autoplay>
       <source :src="getVoiceUrl(voicename)" type="audio/mpeg" />
     </audio>
+    <audio ref="replayVoice"></audio>
 
     <v-dialog v-model="ConfirmTitle" width="auto">
       <v-card max-width="420" title="回到标题" class="pa-4 rounded-xl">
@@ -144,7 +210,8 @@
 import { createRuntime, loadScenario } from '@/engine'
 
 const scenario = loadScenario()
-const SAVE_KEY = 'galgamer-webplayer-save'
+const SAVE_KEY = 'galgamer-webplayer-save-slots'
+const SLOT_COUNT = 6
 
 export default {
   data() {
@@ -158,18 +225,24 @@ export default {
       ConfirmTitle: false,
       backlogOpen: false,
       menuOpen: false,
+      slotPanelOpen: false,
+      slotPanelMode: 'save',
       snackbarOpen: false,
       snackbarText: '',
       imgname: scenario.meta.initialBackground,
       vidname: scenario.meta.initialVideo,
       voicename: '',
-      buttonGo: '开始',
       buttonA: '',
       buttonB: '',
       character: '',
       say: '',
       historyEntries: [],
       variableCount: 0,
+      revealCount: 0,
+      revealTimer: null,
+      textRenderKey: 0,
+      mainVoiceKey: 0,
+      saveSlots: Array.from({ length: SLOT_COUNT }, (_, index) => ({ index, data: null })),
     }
   },
   computed: {
@@ -179,6 +252,21 @@ export default {
     displayCharacter() {
       return this.character || '旁白'
     },
+    renderedChars() {
+      return Array.from(this.say || '')
+    },
+    isCurrentLineFullyRevealed() {
+      return this.revealCount >= this.renderedChars.length
+    },
+    currentVoiceName() {
+      return this.voicename || ''
+    },
+  },
+  mounted() {
+    this.refreshSaveSlots()
+  },
+  beforeUnmount() {
+    this.clearRevealTimer()
   },
   methods: {
     getImageUrl(name) {
@@ -194,6 +282,29 @@ export default {
       this.snackbarText = text
       this.snackbarOpen = true
     },
+    clearRevealTimer() {
+      if (this.revealTimer) {
+        clearInterval(this.revealTimer)
+        this.revealTimer = null
+      }
+    },
+    finishCurrentLineReveal() {
+      this.clearRevealTimer()
+      this.revealCount = this.renderedChars.length
+    },
+    beginLineReveal() {
+      this.clearRevealTimer()
+      this.textRenderKey += 1
+      this.revealCount = 0
+      if (!this.say) return
+      this.revealTimer = setInterval(() => {
+        if (this.revealCount >= this.renderedChars.length) {
+          this.clearRevealTimer()
+          return
+        }
+        this.revealCount += 1
+      }, 28)
+    },
     syncFromRuntime(snapshot) {
       this.start = snapshot.started
       this.vid = Boolean(snapshot.video)
@@ -206,11 +317,22 @@ export default {
       this.say = snapshot.currentCommand?.text || ''
       this.buttonA = snapshot.currentChoice?.options?.[0]?.label || ''
       this.buttonB = snapshot.currentChoice?.options?.[1]?.label || ''
-      this.buttonGo = snapshot.started ? '继续' : '开始'
       this.historyEntries = [...(snapshot.history || [])].reverse()
       this.variableCount = Object.keys(snapshot.variables || {}).length
+      if (snapshot.currentCommand?.type === 'line' || snapshot.currentCommand?.type === 'choice') {
+        this.beginLineReveal()
+      } else {
+        this.finishCurrentLineReveal()
+      }
+      if (snapshot.voice) {
+        this.mainVoiceKey += 1
+      }
     },
     go() {
+      if (this.start && !this.choosing && !this.vid && !this.isCurrentLineFullyRevealed) {
+        this.finishCurrentLineReveal()
+        return
+      }
       const snapshot = this.runtime.advance()
       this.syncFromRuntime(snapshot)
       if (snapshot.finished) {
@@ -227,42 +349,116 @@ export default {
       if (!option || typeof option.target !== 'number') return
       this.syncFromRuntime(this.runtime.choose(option.target, option.effects || []))
     },
-    saveProgress() {
+    replayVoiceByName(fileName) {
+      if (!fileName) {
+        this.toast('这一句没有语音')
+        return
+      }
+      const player = this.$refs.replayVoice
+      if (!player) return
+      player.pause()
+      player.src = this.getVoiceUrl(fileName)
+      player.currentTime = 0
+      player.play()
+    },
+    replayCurrentVoice() {
+      this.replayVoiceByName(this.currentVoiceName)
+    },
+    replayHistoryVoice(fileName) {
+      this.replayVoiceByName(fileName)
+    },
+    jumpToHistoryEntry(entry) {
+      if (!entry?.restorePoint) {
+        this.toast('这个位置暂时不能跳转')
+        return
+      }
+      const snapshot = this.runtime.jumpToHistory(entry.restorePoint)
+      this.syncFromRuntime(snapshot)
+      this.backlogOpen = false
+      this.menuOpen = false
+      this.finishCurrentLineReveal()
+      this.toast('已跳转到该句')
+    },
+    getStoredSlots() {
+      const raw = localStorage.getItem(SAVE_KEY)
+      if (!raw) return Array.from({ length: SLOT_COUNT }, () => null)
+      try {
+        const parsed = JSON.parse(raw)
+        return Array.from({ length: SLOT_COUNT }, (_, index) => parsed[index] || null)
+      } catch {
+        return Array.from({ length: SLOT_COUNT }, () => null)
+      }
+    },
+    refreshSaveSlots() {
+      const slots = this.getStoredSlots()
+      this.saveSlots = slots.map((data, index) => ({ index, data }))
+    },
+    persistSlots(slots) {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(slots))
+      this.refreshSaveSlots()
+    },
+    openSaveSlots() {
+      this.refreshSaveSlots()
+      this.slotPanelMode = 'save'
+      this.slotPanelOpen = true
+      this.menuOpen = false
+    },
+    openLoadSlots() {
+      this.refreshSaveSlots()
+      this.slotPanelMode = 'load'
+      this.slotPanelOpen = true
+      this.menuOpen = false
+    },
+    saveToSlot(index) {
       if (!this.start) {
         this.toast('还没有开始阅读，暂时无法存档')
         return
       }
-      localStorage.setItem(SAVE_KEY, JSON.stringify(this.runtime.snapshot()))
-      this.menuOpen = false
-      this.toast('进度已保存')
+      const slots = this.getStoredSlots()
+      const snap = this.runtime.snapshot()
+      slots[index] = {
+        savedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
+        character: snap.currentCommand?.speaker || '',
+        text: snap.currentCommand?.text || '',
+        state: snap,
+      }
+      this.persistSlots(slots)
+      this.slotPanelOpen = false
+      this.toast(`已保存到槽位 ${index + 1}`)
     },
-    loadProgress() {
-      const raw = localStorage.getItem(SAVE_KEY)
-      if (!raw) {
-        this.toast('没有找到可读取的存档')
+    loadFromSlot(index) {
+      const slots = this.getStoredSlots()
+      const slot = slots[index]
+      if (!slot?.state) {
+        this.toast('这个槽位还是空的')
         return
       }
-      const parsed = JSON.parse(raw)
-      this.syncFromRuntime(this.runtime.restore(parsed))
+      this.syncFromRuntime(this.runtime.restore(slot.state))
+      this.slotPanelOpen = false
       this.menuOpen = false
-      this.toast('已读取存档')
+      this.finishCurrentLineReveal()
+      this.toast(`已读取槽位 ${index + 1}`)
     },
     toggleBacklog() {
       this.backlogOpen = !this.backlogOpen
       this.menuOpen = false
+      this.slotPanelOpen = false
     },
     openBacklogFromMenu() {
       this.menuOpen = false
+      this.slotPanelOpen = false
       this.backlogOpen = true
     },
     toggleMenu() {
       this.menuOpen = !this.menuOpen
       this.backlogOpen = false
+      this.slotPanelOpen = false
     },
     restart() {
       this.ConfirmTitle = false
       this.menuOpen = false
       this.backlogOpen = false
+      this.slotPanelOpen = false
       this.syncFromRuntime(this.runtime.restart())
     },
     title() {
@@ -283,414 +479,86 @@ export default {
   justify-content: center;
   padding: 24px;
 }
-
-.vn-stage {
-  width: min(100%, 1440px);
-}
-
+.vn-stage { width: min(100%, 1440px); }
 .vn-stage__frame {
-  position: relative;
-  overflow: hidden;
-  border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow:
-    0 30px 80px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  background: #0c1220;
-  aspect-ratio: 16 / 9;
+  position: relative; overflow: hidden; border-radius: 28px;
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.1);
+  background: #0c1220; aspect-ratio: 16/9;
 }
-
-.vn-stage__media {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
+.vn-stage__media { width:100%; height:100%; object-fit:cover; display:block; }
 .vn-stage__vignette {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(6, 10, 18, 0.38) 0%, rgba(6, 10, 18, 0.04) 22%, rgba(6, 10, 18, 0.08) 54%, rgba(6, 10, 18, 0.9) 100%),
-    radial-gradient(circle at center, transparent 55%, rgba(0, 0, 0, 0.22) 100%);
+  position:absolute; inset:0; pointer-events:none;
+  background: linear-gradient(180deg, rgba(6,10,18,.38) 0%, rgba(6,10,18,.04) 22%, rgba(6,10,18,.08) 54%, rgba(6,10,18,.9) 100%), radial-gradient(circle at center, transparent 55%, rgba(0,0,0,.22) 100%);
 }
-
-.title-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: min(7vw, 72px);
-  z-index: 3;
-}
-
+.title-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:flex-start; padding:min(7vw,72px); z-index:3; }
 .title-overlay__panel {
-  max-width: min(560px, 90%);
-  padding: clamp(24px, 3.2vw, 40px);
-  border-radius: 28px;
-  background: linear-gradient(180deg, rgba(9, 15, 28, 0.58), rgba(9, 15, 28, 0.26));
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(14px);
+  max-width:min(560px,90%); padding:clamp(24px,3.2vw,40px); border-radius:28px;
+  background:linear-gradient(180deg, rgba(9,15,28,.58), rgba(9,15,28,.26)); border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 18px 40px rgba(0,0,0,.28); backdrop-filter:blur(14px);
 }
-
-.title-overlay__subtitle {
-  color: #b9caf8;
-  font-size: 13px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.title-overlay__title {
-  margin: 10px 0 12px;
-  color: white;
-  font-size: clamp(42px, 5vw, 74px);
-  line-height: 0.98;
-  text-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
-}
-
-.title-overlay__desc {
-  margin: 0;
-  color: rgba(238, 244, 255, 0.86);
-  font-size: clamp(14px, 1.3vw, 18px);
-  line-height: 1.8;
-}
-
-.title-overlay__action {
-  margin-top: 22px;
-  padding: 14px 22px;
-  border-radius: 999px;
-  border: none;
-  color: #0f1730;
-  font-weight: 700;
-  background: linear-gradient(135deg, #e7ecff 0%, #9ab9ff 100%);
-  box-shadow: 0 12px 28px rgba(84, 128, 255, 0.35);
-}
-
-.dialogue-layer {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 0 24px 18px;
-  z-index: 4;
-}
-
+.title-overlay__subtitle { color:#b9caf8; font-size:13px; letter-spacing:.14em; text-transform:uppercase; }
+.title-overlay__title { margin:10px 0 12px; color:white; font-size:clamp(42px,5vw,74px); line-height:.98; text-shadow:0 10px 30px rgba(0,0,0,.42); }
+.title-overlay__desc { margin:0; color:rgba(238,244,255,.86); font-size:clamp(14px,1.3vw,18px); line-height:1.8; }
+.title-overlay__action { margin-top:22px; padding:14px 22px; border-radius:999px; border:none; color:#0f1730; font-weight:700; background:linear-gradient(135deg,#e7ecff 0%,#9ab9ff 100%); box-shadow:0 12px 28px rgba(84,128,255,.35); }
+.dialogue-layer { position:absolute; left:0; right:0; bottom:0; padding:0 24px 18px; z-index:4; }
 .dialogue-box {
-  position: relative;
-  min-height: 180px;
-  border-radius: 26px;
-  padding: 54px 32px 30px;
-  background:
-    linear-gradient(180deg, rgba(18, 26, 42, 0.12), rgba(5, 9, 16, 0.74) 38%, rgba(6, 10, 18, 0.92) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  box-shadow:
-    0 -12px 40px rgba(0, 0, 0, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
+  position:relative; min-height:180px; border-radius:26px; padding:54px 32px 30px;
+  background:linear-gradient(180deg, rgba(18,26,42,.12), rgba(5,9,16,.74) 38%, rgba(6,10,18,.92) 100%);
+  border:1px solid rgba(255,255,255,.11); box-shadow:0 -12px 40px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.08); backdrop-filter:blur(12px);
 }
-
 .dialogue-box__nameplate {
-  position: absolute;
-  top: -22px;
-  left: 28px;
-  display: inline-flex;
-  align-items: center;
-  min-width: 138px;
-  max-width: 340px;
-  padding: 11px 20px 12px;
-  border-radius: 16px 22px 16px 16px;
-  background: linear-gradient(135deg, rgba(149, 183, 255, 0.98), rgba(94, 125, 228, 0.96));
-  color: #ffffff;
-  font-size: clamp(18px, 1.5vw, 26px);
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.15),
-    0 2px 10px rgba(28, 46, 122, 0.45);
-  box-shadow:
-    0 12px 26px rgba(55, 85, 196, 0.34),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  position:absolute; top:-22px; left:28px; display:inline-flex; align-items:center; min-width:138px; max-width:340px;
+  padding:11px 20px 12px; border-radius:16px 22px 16px 16px; background:linear-gradient(135deg, rgba(149,183,255,.98), rgba(94,125,228,.96));
+  color:#fff; font-size:clamp(18px,1.5vw,26px); font-weight:800; letter-spacing:.08em;
+  text-shadow:0 1px 0 rgba(255,255,255,.15), 0 2px 10px rgba(28,46,122,.45);
+  box-shadow:0 12px 26px rgba(55,85,196,.34), inset 0 1px 0 rgba(255,255,255,.18);
 }
-
 .dialogue-box__content {
-  color: rgba(252, 253, 255, 0.98);
-  font-size: clamp(20px, 1.62vw, 30px);
-  line-height: 1.95;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  white-space: pre-wrap;
-  text-shadow:
-    -1px 0 rgba(5, 8, 14, 0.72),
-    0 1px rgba(5, 8, 14, 0.72),
-    1px 0 rgba(5, 8, 14, 0.72),
-    0 -1px rgba(5, 8, 14, 0.72),
-    0 3px 14px rgba(0, 0, 0, 0.34);
+  color:rgba(252,253,255,.98); font-size:clamp(20px,1.62vw,30px); line-height:1.95; font-weight:500; letter-spacing:.02em;
+  white-space:pre-wrap; word-break:break-word;
+  text-shadow:-1px 0 rgba(5,8,14,.72), 0 1px rgba(5,8,14,.72), 1px 0 rgba(5,8,14,.72), 0 -1px rgba(5,8,14,.72), 0 3px 14px rgba(0,0,0,.34);
 }
-
-.choice-layer {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 5;
-  padding: 24px;
+.dialogue-char { display:inline-block; opacity:0; filter:blur(1.6px); transform:translateY(2px); transition:opacity .12s ease, filter .16s ease, transform .16s ease; }
+.dialogue-char--visible { opacity:1; filter:blur(0); transform:translateY(0); }
+.voice-replay-btn {
+  position:absolute; right:18px; bottom:18px; width:34px; height:34px; border:none; border-radius:50%;
+  background:rgba(255,255,255,.06); color:rgba(234,241,255,.9); backdrop-filter:blur(8px);
 }
-
-.choice-panel {
-  width: min(760px, 100%);
-  padding: 24px;
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(13, 18, 33, 0.82), rgba(12, 18, 30, 0.66));
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px);
-}
-
-.choice-panel__title {
-  color: white;
-  font-size: clamp(18px, 1.6vw, 28px);
-  font-weight: 700;
-  margin-bottom: 16px;
-  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
-}
-
-.choice-panel__button {
-  width: 100%;
-  display: block;
-  text-align: left;
-  padding: 17px 20px;
-  margin-top: 12px;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(246, 249, 255, 0.97);
-  font-size: 17px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-  background: linear-gradient(135deg, rgba(77, 103, 179, 0.52), rgba(95, 142, 255, 0.18));
-  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
-}
-
-.choice-panel__button:hover {
-  transform: translateY(-2px);
-  background: linear-gradient(135deg, rgba(96, 129, 223, 0.74), rgba(137, 182, 255, 0.24));
-  border-color: rgba(255, 255, 255, 0.24);
-}
-
-.control-cluster {
-  position: absolute;
-  right: 18px;
-  bottom: 24px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  z-index: 6;
-}
-
-.icon-btn {
-  width: 38px;
-  height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: rgba(246, 249, 255, 0.88);
-  font-size: 22px;
-  text-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.55),
-    0 0 18px rgba(120, 158, 255, 0.18);
-  transition: transform 0.16s ease, color 0.16s ease, opacity 0.16s ease;
-}
-
-.icon-btn:hover {
-  transform: translateY(-1px) scale(1.05);
-  color: #ffffff;
-}
-
-.icon-btn--primary {
-  color: rgba(186, 211, 255, 0.98);
-  font-size: 30px;
-}
-
-.icon-btn--sheet {
-  color: rgba(244, 247, 255, 0.8);
-  background: transparent;
-}
-
-.icon-btn:disabled {
-  opacity: 0.38;
-}
-
-.overlay-menu,
-.backlog-panel {
-  position: absolute;
-  inset: 0;
-  z-index: 7;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(7, 10, 18, 0.24);
-  backdrop-filter: blur(6px);
-}
-
-.overlay-menu__panel,
-.backlog-panel__sheet {
-  width: min(520px, 100%);
-  border-radius: 24px;
-  padding: 24px;
-  background: linear-gradient(180deg, rgba(12, 17, 31, 0.88), rgba(10, 14, 24, 0.82));
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.32);
-}
-
-.overlay-menu__title,
-.backlog-panel__title {
-  color: white;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-
-.overlay-menu__item {
-  width: 100%;
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(247, 249, 255, 0.96);
-}
-
-.overlay-menu__item--danger {
-  color: #ffd4d4;
-}
-
-.backlog-panel__sheet {
-  width: min(860px, 100%);
-  max-height: min(76vh, 860px);
-  display: flex;
-  flex-direction: column;
-}
-
-.backlog-panel__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.backlog-panel__eyebrow {
-  color: rgba(176, 194, 255, 0.8);
-  font-size: 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.backlog-list {
-  overflow: auto;
-  padding-right: 4px;
-}
-
-.backlog-empty {
-  color: rgba(232, 238, 255, 0.66);
-  padding: 18px 2px;
-}
-
-.backlog-item {
-  padding: 14px 2px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.backlog-item__speaker {
-  color: #aecaFF;
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-
-.backlog-item__text {
-  color: rgba(249, 251, 255, 0.94);
-  font-size: 17px;
-  line-height: 1.85;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
-}
-
-.fade-up-enter-active,
-.fade-up-leave-active,
-.fade-soft-enter-active,
-.fade-soft-leave-active {
-  transition: all 0.22s ease;
-}
-
-.fade-up-enter-from,
-.fade-up-leave-to {
-  opacity: 0;
-  transform: translateY(12px);
-}
-
-.fade-soft-enter-from,
-.fade-soft-leave-to {
-  opacity: 0;
-}
-
-@media (max-width: 900px) {
-  .vn-shell {
-    padding: 12px;
-  }
-
-  .vn-stage__frame {
-    aspect-ratio: 9 / 16;
-    border-radius: 22px;
-  }
-
-  .dialogue-layer,
-  .choice-layer,
-  .overlay-menu,
-  .backlog-panel {
-    padding: 14px;
-  }
-
-  .dialogue-box {
-    min-height: 200px;
-    padding: 50px 18px 24px;
-  }
-
-  .dialogue-box__nameplate {
-    left: 18px;
-    min-width: 110px;
-    font-size: 18px;
-  }
-
-  .dialogue-box__content {
-    font-size: 18px;
-    line-height: 1.8;
-  }
-
-  .control-cluster {
-    right: 12px;
-    bottom: 16px;
-    gap: 6px;
-  }
-
-  .icon-btn {
-    width: 34px;
-    height: 34px;
-    font-size: 20px;
-  }
-
-  .icon-btn--primary {
-    font-size: 28px;
-  }
-}
+.choice-layer { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:5; padding:24px; }
+.choice-panel { width:min(760px,100%); padding:24px; border-radius:24px; background:linear-gradient(180deg, rgba(13,18,33,.82), rgba(12,18,30,.66)); border:1px solid rgba(255,255,255,.14); box-shadow:0 24px 48px rgba(0,0,0,.3); backdrop-filter:blur(12px); }
+.choice-panel__title { color:white; font-size:clamp(18px,1.6vw,28px); font-weight:700; margin-bottom:16px; text-shadow:0 3px 12px rgba(0,0,0,.35); }
+.choice-panel__button { width:100%; display:block; text-align:left; padding:17px 20px; margin-top:12px; border-radius:18px; border:1px solid rgba(255,255,255,.12); color:rgba(246,249,255,.97); font-size:17px; text-shadow:0 2px 10px rgba(0,0,0,.3); background:linear-gradient(135deg, rgba(77,103,179,.52), rgba(95,142,255,.18)); }
+.control-cluster { position:absolute; right:18px; bottom:24px; display:flex; align-items:center; gap:8px; z-index:6; }
+.icon-btn { width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; padding:0; border:none; border-radius:50%; background:transparent; color:rgba(246,249,255,.88); font-size:22px; text-shadow:0 2px 12px rgba(0,0,0,.55), 0 0 18px rgba(120,158,255,.18); transition:transform .16s ease, color .16s ease, opacity .16s ease; }
+.icon-btn:hover { transform:translateY(-1px) scale(1.05); color:#fff; }
+.icon-btn--primary { color:rgba(186,211,255,.98); font-size:30px; }
+.icon-btn--sheet { color:rgba(244,247,255,.8); }
+.icon-btn:disabled { opacity:.38; }
+.overlay-menu, .backlog-panel { position:absolute; inset:0; z-index:7; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(7,10,18,.24); backdrop-filter:blur(6px); }
+.overlay-menu__panel, .backlog-panel__sheet { width:min(520px,100%); border-radius:24px; padding:24px; background:linear-gradient(180deg, rgba(12,17,31,.88), rgba(10,14,24,.82)); border:1px solid rgba(255,255,255,.12); box-shadow:0 24px 54px rgba(0,0,0,.32); }
+.overlay-menu__panel--wide { width:min(760px,100%); }
+.overlay-menu__title, .backlog-panel__title { color:white; font-size:24px; font-weight:800; letter-spacing:.06em; }
+.overlay-menu__item { width:100%; margin-top:12px; display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:16px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.03); color:rgba(247,249,255,.96); }
+.overlay-menu__item--danger { color:#ffd4d4; }
+.backlog-panel__sheet { width:min(860px,100%); max-height:min(76vh,860px); display:flex; flex-direction:column; }
+.backlog-panel__header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.backlog-panel__eyebrow { color:rgba(176,194,255,.8); font-size:12px; letter-spacing:.18em; text-transform:uppercase; }
+.backlog-list { overflow:auto; padding-right:4px; }
+.backlog-empty { color:rgba(232,238,255,.66); padding:18px 2px; }
+.backlog-item { padding:14px 2px 16px; border-bottom:1px solid rgba(255,255,255,.06); }
+.backlog-item__top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.backlog-item__speaker { color:#aecaff; font-size:15px; font-weight:800; letter-spacing:.06em; margin-bottom:8px; }
+.backlog-item__actions { display:flex; gap:6px; }
+.backlog-action { width:30px; height:30px; border:none; border-radius:50%; background:rgba(255,255,255,.05); color:rgba(239,244,255,.9); }
+.backlog-item__text { color:rgba(249,251,255,.94); font-size:17px; line-height:1.85; text-shadow:0 2px 10px rgba(0,0,0,.22); }
+.slot-list { display:grid; gap:12px; margin-top:14px; }
+.slot-item { width:100%; text-align:left; padding:16px 18px; border-radius:18px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.03); color:rgba(246,249,255,.96); }
+.slot-item__header { display:flex; justify-content:space-between; gap:12px; font-weight:700; margin-bottom:8px; }
+.slot-item__body { color:rgba(226,234,255,.86); line-height:1.7; }
+.slot-item__text { opacity:.9; }
+.fade-up-enter-active,.fade-up-leave-active,.fade-soft-enter-active,.fade-soft-leave-active { transition:all .22s ease; }
+.fade-up-enter-from,.fade-up-leave-to { opacity:0; transform:translateY(12px); }
+.fade-soft-enter-from,.fade-soft-leave-to { opacity:0; }
+@media (max-width:900px){ .vn-shell{padding:12px;} .vn-stage__frame{aspect-ratio:9/16;border-radius:22px;} .dialogue-layer,.choice-layer,.overlay-menu,.backlog-panel{padding:14px;} .dialogue-box{min-height:200px;padding:50px 18px 24px;} .dialogue-box__nameplate{left:18px;min-width:110px;font-size:18px;} .dialogue-box__content{font-size:18px;line-height:1.8;} .control-cluster{right:12px;bottom:16px;gap:6px;} .icon-btn{width:34px;height:34px;font-size:20px;} .icon-btn--primary{font-size:28px;} }
 </style>

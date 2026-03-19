@@ -13,7 +13,8 @@ function resolveTarget(target, labels) {
 export function createRuntime(scenario) {
   const commands = scenario.commands || []
   const labels = scenario.labels || {}
-  const state = createInitialRuntimeState(scenario.meta, scenario.initialVariables)
+  const initialState = createInitialRuntimeState(scenario.meta, scenario.initialVariables)
+  const state = cloneRuntimeState(initialState)
 
   function snapshot() {
     return cloneRuntimeState(state)
@@ -23,25 +24,30 @@ export function createRuntime(scenario) {
     return commands[pointer] || null
   }
 
-  function pushHistory(command) {
+  function pushHistory(command, beforeState) {
     if (!command) return
     if (command.type !== 'line' && command.type !== 'choice') return
 
     state.history.push({
       id: command.id,
+      commandIndex: command.index,
       type: command.type,
       speaker: command.speaker || '',
       text: command.text || '',
+      voice: command.voice || '',
+      visual: command.visual || '',
+      restorePoint: cloneRuntimeState(beforeState),
     })
   }
 
   function applyPresentationCommand(command) {
+    const beforeState = snapshot()
     state.video = null
     if (command.visual) state.background = command.visual
     state.voice = command.voice || null
     state.currentChoice = null
     state.currentCommand = command
-    pushHistory(command)
+    pushHistory(command, beforeState)
     state.pointer += 1
     return snapshot()
   }
@@ -56,6 +62,7 @@ export function createRuntime(scenario) {
   }
 
   function applyChoiceCommand(command) {
+    const beforeState = snapshot()
     state.video = null
     if (command.visual) state.background = command.visual
     state.voice = command.voice || null
@@ -64,7 +71,7 @@ export function createRuntime(scenario) {
       question: command.text,
       options: command.options || [],
     }
-    pushHistory(command)
+    pushHistory(command, beforeState)
     state.pointer += 1
     return snapshot()
   }
@@ -186,8 +193,16 @@ export function createRuntime(scenario) {
     return snapshot()
   }
 
+  function jumpToHistory(restorePoint) {
+    const base = restore(restorePoint)
+    if (!base.started) {
+      state.started = true
+    }
+    return advance()
+  }
+
   function restart() {
-    return restore(createInitialRuntimeState(scenario.meta, scenario.initialVariables))
+    return restore(initialState)
   }
 
   return {
@@ -195,6 +210,7 @@ export function createRuntime(scenario) {
     choose,
     restart,
     restore,
+    jumpToHistory,
     snapshot,
   }
 }
