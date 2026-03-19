@@ -20,7 +20,7 @@
                         :src="getVidUrl(vidname)"
                         autoplay
                     ></video>
-                    
+
                     <v-slide-y-transition>
                         <v-sheet
                             v-if="!vid && start"
@@ -131,31 +131,28 @@
 </template>
 
 <script>
-import gameData from '../assets/game1.json'
+import { createRuntime, loadScenario } from '@/engine'
+
+const scenario = loadScenario()
 
 export default {
     data() {
         return {
+            runtime: createRuntime(scenario),
             start: false,
             vid: false,
             voice: false,
             choosing:false,
             ConfirmTitle:false,
-            imgname: 'poster.png',
-            vidname: 'M1.mp4',
+            imgname: scenario.meta.initialBackground,
+            vidname: scenario.meta.initialVideo,
             voicename: '',
-            index: 0,
 
             buttonGo: '开始',
             buttonA:'',
             buttonB:'',
-            indexA: 0,
-            indexB: 0,
             character: '',
             say: '',
-
-            plot: gameData.plot,
-            choose: gameData.choices
         };
     },
     methods: {
@@ -168,72 +165,41 @@ export default {
         getVoiceUrl(name) {
             return new URL(`../assets/voice/${name}`, import.meta.url).href
         },
+        syncFromRuntime(snapshot) {
+            this.start = snapshot.started
+            this.vid = Boolean(snapshot.video)
+            this.voice = Boolean(snapshot.voice)
+            this.choosing = Boolean(snapshot.currentChoice)
+            this.imgname = snapshot.background || scenario.meta.initialBackground
+            this.vidname = snapshot.video || scenario.meta.initialVideo
+            this.voicename = snapshot.voice || ''
+            this.character = snapshot.currentNode?.speaker || ''
+            this.say = snapshot.currentNode?.text || ''
+            this.buttonA = snapshot.currentChoice?.options?.[0]?.label || ''
+            this.buttonB = snapshot.currentChoice?.options?.[1]?.label || ''
+            this.buttonGo = snapshot.started ? '前进' : '开始'
+        },
         go() {
-            if (this.start === false) {//进入游戏
-                this.start = true;
-                this.buttonGo = '前进';
-                console.log('已开始');
-            }
-            if (this.index === this.plot.length) {this.title();return;}
+            const snapshot = this.runtime.advance()
+            this.syncFromRuntime(snapshot)
 
-            console.log(this.index, this.plot[this.index]);
-            if (true&&this.plot[this.index].character === 'vid') {
-                this.vid = true;
-                this.vidname = this.plot[this.index].vision;
-                this.index++;
-                return;
-            }else if(this.plot[this.index].character === 'jump'){
-                this.index = parseInt(this.plot[this.index].say);
+            if (snapshot.finished) {
+                this.title()
             }
-
-            this.vid = false;
-            if (this.plot[this.index].vision.length) {
-                this.imgname = this.plot[this.index].vision;
-            }
-            if (this.plot[this.index].voice.length) {
-                this.voice = true;
-                this.voicename = this.plot[this.index].voice;
-            } else { this.voice = false; }
-            this.character = this.plot[this.index].character;
-            this.say = this.plot[this.index].say;
-
-            if (this.plot[this.index].character === 'choose') {
-                for (let i = 0; i < this.choose.length; i++) {
-                    if (this.choose[i].question === this.plot[this.index].say) {
-                        this.buttonA = this.choose[i].A;
-                        this.buttonB = this.choose[i].B;
-                        this.indexA = this.choose[i].indexA;
-                        this.indexB = this.choose[i].indexB;
-                        break;
-                    }
-                    if(i===this.choose.length-1){
-                        alert("未找到对应的分支选项");
-                    }
-                }
-                this.choosing=true;
-            }
-
-            this.index++;
         },
         chooseA(){
-            this.index=this.indexA;
-            this.choosing=false;
-            this.go();
+            const target = this.runtime.snapshot().currentChoice?.options?.[0]?.target
+            if (typeof target !== 'number') return
+            this.syncFromRuntime(this.runtime.choose(target))
         },
         chooseB(){
-            this.index=this.indexB;
-            this.choosing=false;
-            this.go();
+            const target = this.runtime.snapshot().currentChoice?.options?.[1]?.target
+            if (typeof target !== 'number') return
+            this.syncFromRuntime(this.runtime.choose(target))
         },
         restart(){
             this.ConfirmTitle = false;
-            this.buttonGo = '开始';
-            this.imgname = 'poster.png';
-            this.index = 0;
-            this.start = false;
-            this.choosing = false;
-            this.vid = false;
-            console.log('已结束，重置游戏');
+            this.syncFromRuntime(this.runtime.restart())
         },
         title(){
             this.ConfirmTitle=true;
