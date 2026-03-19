@@ -1,43 +1,127 @@
 import { cloneRuntimeState, createInitialRuntimeState } from './runtimeState'
 
-export function createRuntime(scenario) {
-  const state = createInitialRuntimeState(scenario.meta)
-  const nodes = scenario.nodes || []
+function isLabelReference(target) {
+  return typeof target === 'string' && target.trim().length > 0
+}
 
-  function getNode(pointer = state.pointer) {
-    return nodes[pointer] || null
+function resolveTarget(target, labels) {
+  if (typeof target === 'number') return target
+  if (isLabelReference(target)) return labels[target] ?? null
+  return null
+}
+
+export function createRuntime(scenario) {
+  const commands = scenario.commands || []
+  const labels = scenario.labels || {}
+  const state = createInitialRuntimeState(scenario.meta, scenario.initialVariables)
+
+  function snapshot() {
+    return cloneRuntimeState(state)
   }
 
-  function applyLineNode(node) {
+  function getCommand(pointer = state.pointer) {
+    return commands[pointer] || null
+  }
+
+  function pushHistory(command) {
+    if (!command) return
+    if (command.type !== 'line' && command.type !== 'choice') return
+
+    state.history.push({
+      id: command.id,
+      type: command.type,
+      speaker: command.speaker || '',
+      text: command.text || '',
+    })
+  }
+
+  function applyPresentationCommand(command) {
     state.video = null
-    if (node.visual) state.background = node.visual
-    state.voice = node.voice || null
+    if (command.visual) state.background = command.visual
+    state.voice = command.voice || null
     state.currentChoice = null
-    state.currentNode = node
+    state.currentCommand = command
+    pushHistory(command)
     state.pointer += 1
     return snapshot()
   }
 
-  function applyVideoNode(node) {
-    state.video = node.visual || null
+  function applyVideoCommand(command) {
+    state.video = command.visual || null
     state.voice = null
     state.currentChoice = null
-    state.currentNode = node
+    state.currentCommand = command
     state.pointer += 1
     return snapshot()
   }
 
-  function applyChoiceNode(node) {
+  function applyChoiceCommand(command) {
     state.video = null
-    if (node.visual) state.background = node.visual
-    state.voice = node.voice || null
-    state.currentNode = node
+    if (command.visual) state.background = command.visual
+    state.voice = command.voice || null
+    state.currentCommand = command
     state.currentChoice = {
-      question: node.text,
-      options: node.options || [],
+      question: command.text,
+      options: command.options || [],
     }
+    pushHistory(command)
     state.pointer += 1
     return snapshot()
+  }
+
+  function applySetCommand(command) {
+    state.variables[command.name] = command.value
+    state.pointer += 1
+  }
+
+  function evaluateCondition(condition) {
+    if (!condition) return false
+    const left = state.variables[condition.var]
+    const right = condition.value
+
+    switch (condition.op) {
+      case '===':
+      case '==':
+        return left === right
+      case '!==':
+      case '!=':
+        return left !== right
+      case '>':
+        return left > right
+      case '>=':
+        return left >= right
+      case '<':
+        return left < right
+      case '<=':
+        return left <= right
+      case 'truthy':
+        return Boolean(left)
+      case 'falsy':
+        return !left
+      default:
+        return false
+    }
+  }
+
+  function applyJumpCommand(command) {
+    const target = resolveTarget(command.target, labels)
+    if (typeof target !== 'number') {
+      throw new Error(`Invalid jump target: ${command.target}`)
+    }
+    state.pointer = target
+  }
+
+  function applyConditionalJump(command) {
+    if (evaluateCondition(command.condition)) {
+      applyJumpCommand(command)
+      return
+    }
+    state.pointer += 1
+  }
+
+  function applyBgmCommand(command) {
+    state.bgm = command.audio || null
+    state.pointer += 1
   }
 
   function advance() {
@@ -50,49 +134,67 @@ export function createRuntime(scenario) {
     }
 
     while (true) {
-      const node = getNode()
-      if (!node) {
+      const command = getCommand()
+      if (!command) {
         state.finished = true
         return snapshot()
       }
 
-      if (node.type === 'jump') {
-        state.pointer = node.target
-        continue
+      switch (command.type) {
+        case 'label':
+          state.pointer += 1
+          continue
+        case 'set':
+          applySetCommand(command)
+          continue
+        case 'jump':
+          applyJumpCommand(command)
+          continue
+        case 'jumpIf':
+          applyConditionalJump(command)
+          continue
+        case 'bgm':
+          applyBgmCommand(command)
+          continue
+        case 'video':
+          return applyVideoCommand(command)
+        case 'choice':
+          return applyChoiceCommand(command)
+        case 'line':
+        default:
+          return applyPresentationCommand(command)
       }
-
-      if (node.type === 'video') {
-        return applyVideoNode(node)
-      }
-
-      if (node.type === 'choice') {
-        return applyChoiceNode(node)
-      }
-
-      return applyLineNode(node)
     }
   }
 
-  function choose(target) {
+  function choose(target, effects = []) {
+    for (const effect of effects) {
+      if (effect?.type === 'set' && effect.name) {
+        state.variables[effect.name] = effect.value
+      }
+    }
+
     state.pointer = target
     state.currentChoice = null
     return advance()
   }
 
-  function restart() {
-    const fresh = createInitialRuntimeState(scenario.meta)
+  function restore(nextState) {
+    const fresh = createInitialRuntimeState(scenario.meta, scenario.initialVariables)
+    Object.assign(fresh, cloneRuntimeState(nextState))
     Object.assign(state, fresh)
     return snapshot()
   }
 
-  function snapshot() {
-    return cloneRuntimeState(state)
+  function restart() {
+    return restore(createInitialRuntimeState(scenario.meta, scenario.initialVariables))
   }
 
   return {
     advance,
     choose,
     restart,
+    restore,
     snapshot,
   }
 }

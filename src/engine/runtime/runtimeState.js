@@ -1,4 +1,4 @@
-export function createInitialRuntimeState(meta = {}) {
+export function createInitialRuntimeState(meta = {}, initialVariables = {}) {
   return {
     started: false,
     finished: false,
@@ -6,8 +6,11 @@ export function createInitialRuntimeState(meta = {}) {
     background: meta.initialBackground || 'poster.png',
     video: null,
     voice: null,
-    currentNode: null,
+    bgm: meta.initialBgm || null,
+    currentCommand: null,
     currentChoice: null,
+    variables: { ...initialVariables },
+    history: [],
   }
 }
 
