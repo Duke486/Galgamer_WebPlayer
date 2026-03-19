@@ -12,7 +12,7 @@ Current priorities:
 - support future extensibility without component-level rewrites
 - redesign the UI to feel like an actual visual novel presentation
 
-## Implemented in this step
+## Implemented in Phase 1 round 1
 
 ### Runtime improvements
 - scenario loader now supports two paths:
@@ -36,12 +36,26 @@ Current priorities:
 - title screen rebuilt into a cinematic overlay
 - dialogue panel redesigned as an in-scene VN textbox
 - choices redesigned into a focused floating panel
-- lightweight status ribbon added for runtime visibility during rewrite stage
+
+## Implemented in Phase 1 round 2
+
+### Player-facing systems
+- added local save support using runtime snapshots + `localStorage`
+- added local load support through runtime `restore()`
+- added backlog viewer based on runtime history
+- added in-scene menu overlay for save / load / backlog / return-to-title
+
+### UI refinement goals achieved
+- removed top-right gameplay labels and buttons for a cleaner composition
+- redesigned controls into smaller, icon-based, transparent in-scene buttons
+- refined nameplate styling to better separate speaker identity from body text
+- upgraded body text with stronger readability treatment using layered text-shadow for a subtle outline feel
+- kept controls inside the stage instead of outside the frame, matching common VN interaction patterns
 
 ## Why this matters
 
 This keeps the current story working, while making the codebase ready for:
-- save/load
+- durable save/load
 - backlog UI
 - variables and branching expansion
 - command-driven script schema migration
@@ -49,8 +63,8 @@ This keeps the current story working, while making the codebase ready for:
 
 ## Recommended next Phase 1 follow-ups
 
-1. add explicit save/load serialization format
-2. add backlog UI backed by runtime history
-3. add script validation for command schema
+1. move save slots from single autosave-style storage to named slots
+2. add settings menu for text speed / volume / UI opacity
+3. split scene UI into dedicated components (`DialogueBox`, `ControlCluster`, `BacklogPanel`, `SystemMenu`)
 4. add BGM asset support and audio channel manager
-5. split UI into dedicated components instead of a single scene file
+5. create a modern first-class scenario format file to replace the legacy compatibility layer over time
